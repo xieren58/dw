@@ -1,0 +1,141 @@
+name: Release dw
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        # 定义笛卡尔积基础维度
+        os: [ubuntu-latest, macos-latest]
+        arch: [amd64]
+        include:
+          # ============= Linux amd64 =============
+          - os: ubuntu-latest
+            arch: amd64
+            goos: linux
+            goarch: amd64
+            name: linux-amd64
+            binary: dw
+            pack_cmd: tar zcvf
+            archive_ext: tar.gz
+            out_file: dw-linux-amd64.tar.gz
+
+
+          # ============= macOS amd64 =============
+          - os: macos-latest
+            arch: amd64
+            goos: darwin
+            goarch: amd64
+            name: darwin-amd64
+            binary: dw
+            pack_cmd: tar zcvf
+            archive_ext: tar.gz
+            out_file: dw-darwin-amd64.tar.gz
+
+          # ============= macOS arm64 =============
+          - os: macos-latest
+            arch: arm64
+            goos: darwin
+            goarch: arm64
+            name: darwin-arm64
+            binary: dw
+            pack_cmd: tar zcvf
+            archive_ext: tar.gz
+            out_file: dw-darwin-arm64.tar.gz
+
+
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install brotli development library (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update || true && sudo apt-get install -y libbrotli-dev
+
+
+      - name: Install brotli development library (macOS arm64)
+        if: matrix.os == 'macos-latest' && matrix.arch == 'arm64'
+        run: brew install brotli
+
+
+      - name: Set up Go 1.24
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.3'
+          stable: true
+
+      - name: Show Go version
+        run: go version
+
+      - name: Build dw for ${{ matrix.name }}
+        run: |
+          if [ "${{ matrix.os }}" = "macos-latest" ]; then
+            if [ "${{ matrix.arch }}" = "amd64" ]; then
+              export BREW_PREFIX=$(arch -x86_64 /usr/local/bin/brew --prefix brotli 2>/dev/null || arch -x86_64 /opt/homebrew/bin/brew --prefix brotli)
+              export CGO_CFLAGS="-I$BREW_PREFIX/include"
+              export CGO_LDFLAGS="-L$BREW_PREFIX/lib"
+              arch -x86_64 go build -o ${{ matrix.binary }} .
+              exit $?
+            else
+              export CGO_CFLAGS="-I$(brew --prefix)/include"
+              export CGO_LDFLAGS="-L$(brew --prefix)/lib"
+            fi
+          fi
+          CGO_ENABLED=1 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
+          go build -o ${{ matrix.binary }} .
+        shell: bash
+
+      - name: Package binary
+        run: |
+          ${{ matrix.pack_cmd }} ${{ matrix.out_file }} ${{ matrix.binary }}
+        shell: bash
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.out_file }}
+          path: ${{ matrix.out_file }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: releases
+          merge-multiple: true
+
+      - name: Publish Release
+        uses: ncipollo/release-action@v1
+        with:
+          name: Release ${{ github.ref_name }}
+          tag: ${{ github.ref_name }}
+          body: |
+            🚀 Automated release of **dw** `${{ github.ref_name }}`.
+
+            ### 📦 Downloads:
+
+            #### Linux
+            - [dw-linux-amd64.tar.gz](./dw-linux-amd64.tar.gz) – Linux x86_64
+
+            #### macOS
+            - [dw-darwin-amd64.tar.gz](./dw-darwin-amd64.tar.gz) – Intel Mac
+            - [dw-darwin-arm64.tar.gz](./dw-darwin-arm64.tar.gz) – Apple Silicon
+
+
+
+            Built with Go 1.24.
+          allowUpdates: true
+          artifacts: "releases/**/*.{tar.gz,zip}"
+          token: ${{ secrets.DW_RELEASE_TOKEN }}
