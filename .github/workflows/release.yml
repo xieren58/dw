@@ -27,4 +27,4 @@ jobs:
           args: release --clean
           workdir: .
         env:
-          GITHUB_TOKEN: ${{ secrets.DW_RELEASER_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.DW_RELEASE_TOKEN }}
