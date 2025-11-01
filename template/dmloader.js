@@ -231,9 +231,9 @@ var FileLoader = {
 var EngineLoader = {
     arc_sha1: "",
     wasm_sha1: "",
-    wasm_size: 3079880,
+    wasm_size: { wasmSize },
     wasmjs_sha1: "",
-    wasmjs_size: 283376,
+    wasmjs_size: { wasmJSSize },
     wasm_pthread_sha1: "",
     wasm_pthread_size: 2000000,
     wasmjs_pthread_sha1: "",
@@ -1276,7 +1276,7 @@ Module["locateFile"] = function (path, scriptDirectory) {
         if (Module['isWASMPthreadSupported']) {
             path = "{projectName}_wasm_pthread.wasm.br";
         } else {
-            path = "{projectName}_wasm.wasm.br";
+            path = "{projectName}.wasm.br";
         }
     }
     return scriptDirectory + path;

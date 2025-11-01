@@ -23,9 +23,11 @@ const (
 
 var projectName = ""
 var appId *string
+var wasmSize int
+var wasmJSSize int
 
 // initProjectName finds and initializes the project name from _wasm.js files
-func initProjectName(source string, targetDir string) string {
+func initProjectName(source string) string {
 	// Find all _wasm.js files in the current directory
 	files, err := filepath.Glob(filepath.Join(source, "*_wasm.js"))
 	if err != nil {
@@ -92,7 +94,7 @@ func main() {
 	fmt.Printf(Blue+"AppId: %s\n"+Reset, *appId)
 
 	// Initialize projectName using the filename without _wasm.js suffix
-	projectName = initProjectName(*sourceDir, *targetDir)
+	projectName = initProjectName(*sourceDir)
 
 	// Construct the final target directory path: targetDir + projectName
 	finalTargetDir := filepath.Join(*targetDir, projectName)
@@ -104,14 +106,17 @@ func main() {
 		return
 	}
 
-	// Copy template files to the final target directory
-	copyTemplate(finalTargetDir)
-
 	// Call each processing function using the final target directory
 	modifyWasmJS(*sourceDir, finalTargetDir)
 	renameArchiveFiles(*sourceDir, finalTargetDir)
 	modifyArchiveJSON(*sourceDir, finalTargetDir)
 	compressWasm(*sourceDir, finalTargetDir)
+
+	// Calculate sizes after processing
+	calculateSizes(finalTargetDir)
+
+	// Copy template files to the final target directory (after sizes are calculated)
+	copyTemplate(finalTargetDir)
 
 	fmt.Println(Green + "All file processing completed" + Reset)
 }
@@ -135,9 +140,11 @@ func copyTemplate(targetDir string) {
 			continue
 		}
 
-		// If the file is project.config.json or project.private.config.json, replace the {projectName} placeholder
+		// Replace placeholders
 		data = []byte(strings.ReplaceAll(string(data), "{projectName}", projectName))
 		data = []byte(strings.ReplaceAll(string(data), "{wxAppId}", *appId))
+		data = []byte(strings.ReplaceAll(string(data), "{ wasmSize }", fmt.Sprintf("%d", wasmSize)))
+		data = []byte(strings.ReplaceAll(string(data), "{ wasmJSSize }", fmt.Sprintf("%d", wasmJSSize)))
 
 		targetPath := filepath.Join(targetDir, file)
 		err = os.WriteFile(targetPath, data, 0755)
@@ -406,4 +413,39 @@ func modifyArchiveJSON(sourceDir, targetDir string) {
 	}
 
 	fmt.Printf(Green+"Successfully modified and wrote archive_files.json file: %s\n"+Reset, targetJSONFilePath)
+}
+
+// calculateSizes calculates the sizes of the compressed wasm and wasm.js files
+func calculateSizes(targetDir string) {
+	// Find .wasm.br file
+	wasmFiles, err := filepath.Glob(filepath.Join(targetDir, "*.wasm.br"))
+	if err != nil {
+		fmt.Printf(Red+"Error finding .wasm.br files: %v\n"+Reset, err)
+		return
+	}
+	if len(wasmFiles) > 0 {
+		fileInfo, err := os.Stat(wasmFiles[0])
+		if err != nil {
+			fmt.Printf(Red+"Error getting file info for %s: %v\n"+Reset, wasmFiles[0], err)
+		} else {
+			wasmSize = int(fileInfo.Size())
+			fmt.Printf(Cyan+"WASM size: %d bytes\n"+Reset, wasmSize)
+		}
+	}
+
+	// Find _wasm.js file
+	wasmJSFiles, err := filepath.Glob(filepath.Join(targetDir, "*_wasm.js"))
+	if err != nil {
+		fmt.Printf(Red+"Error finding _wasm.js files: %v\n"+Reset, err)
+		return
+	}
+	if len(wasmJSFiles) > 0 {
+		fileInfo, err := os.Stat(wasmJSFiles[0])
+		if err != nil {
+			fmt.Printf(Red+"Error getting file info for %s: %v\n"+Reset, wasmJSFiles[0], err)
+		} else {
+			wasmJSSize = int(fileInfo.Size())
+			fmt.Printf(Cyan+"WASM JS size: %d bytes\n"+Reset, wasmJSSize)
+		}
+	}
 }
